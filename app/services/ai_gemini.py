@@ -153,7 +153,7 @@ def generate_insight(analysis_result: Dict[str, Any], context: Dict[str, Any] | 
 			prompt,
 			generation_config={
 				"temperature": 0.7,
-				"max_output_tokens": settings.ai_max_output_tokens,
+				"max_output_tokens": max(settings.ai_max_output_tokens, 1000),  # Ensure at least 1000 tokens
 			},
 		)
 	except Exception as e:
@@ -163,8 +163,15 @@ def generate_insight(analysis_result: Dict[str, Any], context: Dict[str, Any] | 
 	if not hasattr(response, 'text') or not response.text:
 		raise RuntimeError("Empty response from Gemini model")
 	
-	# Parse JSON response
+	# Get the complete response text
+	# Handle cases where response might be truncated
 	text = response.text.strip()
+	
+	# Check if response was truncated (Gemini sometimes returns incomplete JSON)
+	# If the text doesn't end with }, try to get more
+	if text.count('{') > text.count('}'):
+		# JSON might be incomplete, but we'll try to parse what we have
+		pass
 	
 	# Try to extract JSON if wrapped in markdown code blocks
 	# Handle multiple formats: ```json, ```, or plain JSON
@@ -211,51 +218,95 @@ def generate_insight(analysis_result: Dict[str, Any], context: Dict[str, Any] | 
 				json_text = json_text[start_idx:end_idx]
 	
 	# Parse JSON
+	result = None
 	try:
 		result = json.loads(json_text)
 	except json.JSONDecodeError as e:
-		# If JSON parsing fails, try to extract meaningful content
-		# Look for text field in the raw response
-		if '"text"' in text or "'text'" in text:
-			# Try to extract text field using regex-like approach
-			# Match text field with proper JSON string handling (including escaped quotes)
-			text_match = re.search(r'["\']text["\']\s*:\s*["\']((?:[^"\\]|\\.)*)["\']', text)
-			# Also try without quotes (in case it's a multi-line string)
-			if not text_match:
-				text_match = re.search(r'["\']text["\']\s*:\s*["\']([^"\']*(?:\n[^"\']*)*)["\']', text, re.DOTALL)
-			highlights_match = re.findall(r'["\']highlights["\']\s*:\s*\[(.*?)\]', text, re.DOTALL)
+		# If JSON parsing fails, try to manually extract fields
+		# This handles cases where JSON might be incomplete or malformed
+		
+		# Try to extract text field - handle multi-line strings with proper quote matching
+		text_value = None
+		# Pattern 1: "text": "value" (handles escaped quotes)
+		text_patterns = [
+			r'"text"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"',  # Double quotes with escapes
+			r'"text"\s*:\s*"([^"]*)"',  # Simple double quotes
+			r"'text'\s*:\s*'([^']*)'",  # Single quotes
+		]
+		
+		for pattern in text_patterns:
+			match = re.search(pattern, text, re.DOTALL)
+			if match:
+				text_value = match.group(1)
+				# Unescape common escape sequences
+				text_value = text_value.replace('\\n', '\n').replace('\\"', '"').replace("\\'", "'")
+				break
+		
+		# Extract highlights array
+		highlights = []
+		highlights_pattern = r'"highlights"\s*:\s*\[(.*?)\]'
+		highlights_match = re.search(highlights_pattern, text, re.DOTALL)
+		if highlights_match:
+			highlights_content = highlights_match.group(1)
+			# Extract individual string values from array
+			highlight_items = re.findall(r'"(?:[^"\\]|\\.)*"', highlights_content)
+			for item in highlight_items:
+				# Remove quotes and unescape
+				clean_item = item[1:-1].replace('\\n', '\n').replace('\\"', '"')
+				highlights.append(clean_item)
+		
+		# Extract method field
+		method_value = None
+		method_patterns = [
+			r'"method"\s*:\s*"((?:[^"\\]|\\.)*)"',
+			r'"method"\s*:\s*"([^"]*)"',
+			r"'method'\s*:\s*'([^']*)'",
+		]
+		for pattern in method_patterns:
+			match = re.search(pattern, text, re.DOTALL)
+			if match:
+				method_value = match.group(1).replace('\\n', '\n').replace('\\"', '"')
+				break
+		
+		# Build result
+		if text_value:
+			result = {
+				"text": text_value,
+				"highlights": highlights if highlights else [],
+				"method": method_value or "Gemini analysis based on provided data",
+			}
+		else:
+			# Last resort: try to find any JSON-like structure and extract what we can
+			# Look for the text field value even if JSON is malformed
+			text_start = text.find('"text"')
+			if text_start >= 0:
+				# Find the colon after "text"
+				colon_pos = text.find(':', text_start)
+				if colon_pos >= 0:
+					# Find the opening quote
+					quote_start = text.find('"', colon_pos)
+					if quote_start >= 0:
+						# Find the closing quote, handling escaped quotes
+						quote_end = quote_start + 1
+						while quote_end < len(text):
+							if text[quote_end] == '"' and text[quote_end - 1] != '\\':
+								break
+							quote_end += 1
+						if quote_end < len(text):
+							extracted_text = text[quote_start + 1:quote_end]
+							result = {
+								"text": extracted_text.replace('\\n', '\n').replace('\\"', '"'),
+								"highlights": highlights if highlights else [],
+								"method": method_value or "Gemini analysis based on provided data",
+							}
 			
-			if text_match:
+			# Final fallback
+			if not result:
 				result = {
-					"text": text_match.group(1),
+					"text": text.replace("```json", "").replace("```", "").strip(),
 					"highlights": [],
 					"method": "Gemini analysis based on provided data",
 				}
-				# Try to extract highlights
-				if highlights_match:
-					# Simple extraction of highlight strings
-					highlight_strs = re.findall(r'["\']([^"\']+)["\']', highlights_match[0])
-					result["highlights"] = highlight_strs[:5]  # Limit to 5
-			else:
-				# Fallback: return as plain text with basic structure
-				# Use first 500 chars as text
-				clean_text = text.replace("```json", "").replace("```", "").strip()
-				if clean_text.startswith("{"):
-					clean_text = clean_text[1:]
-				if clean_text.endswith("}"):
-					clean_text = clean_text[:-1]
-				result = {
-					"text": clean_text[:500] + ("..." if len(clean_text) > 500 else ""),
-					"highlights": [clean_text[:100] + "..." if len(clean_text) > 100 else clean_text],
-					"method": "Gemini analysis based on provided data",
-				}
-		else:
-			# Complete fallback
-			result = {
-				"text": text[:500] + ("..." if len(text) > 500 else ""),
-				"highlights": [text[:100] + "..." if len(text) > 100 else text],
-				"method": "Gemini analysis based on provided data",
-			}
 	
 	# Ensure required fields
 	if "text" not in result:
