@@ -7,7 +7,7 @@ from app.core.config import settings
 
 connect_args = {}
 db_url = settings.sqlalchemy_database_url
-
+print("USING DB:", settings.sqlalchemy_database_url, flush=True)
 engine_kwargs = {
     "connect_args": connect_args,
     "pool_pre_ping": True,
