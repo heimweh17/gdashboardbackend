@@ -48,7 +48,7 @@ def generate_insight(analysis_result: Dict[str, Any], context: Dict[str, Any] | 
 		)
 	except Exception as e:
 		# If model fails, try fallback models
-		fallback_models = ["gemini-pro", "gemini-1.5-pro", "models/gemini-pro"]
+		fallback_models = ["gemini-1.0-pro", "gemini-pro", "gemini-1.5-pro", "models/gemini-pro"]
 		model = None
 		last_error = str(e)
 		
