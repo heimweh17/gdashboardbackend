@@ -15,6 +15,63 @@ except ImportError:
 from app.core.config import settings
 
 
+def _get_available_models() -> list[str]:
+	"""
+	List available Gemini models for generateContent.
+	Returns list of model names that support generateContent.
+	"""
+	if not GEMINI_AVAILABLE:
+		return []
+	
+	if not settings.gemini_api_key:
+		return []
+	
+	try:
+		genai.configure(api_key=settings.gemini_api_key)
+		models = genai.list_models()
+		
+		available = []
+		for model in models:
+			# Check if model supports generateContent
+			if "generateContent" in model.supported_generation_methods:
+				# Extract just the model name (remove 'models/' prefix if present)
+				name = model.name
+				if name.startswith("models/"):
+					name = name[7:]  # Remove "models/" prefix
+				available.append(name)
+				# Also add with prefix for compatibility
+				if not name.startswith("models/"):
+					available.append(f"models/{name}")
+		
+		return available
+	except Exception:
+		return []
+
+
+def _find_working_model(preferred: str) -> str:
+	"""
+	Find a working model by checking available models.
+	Returns the preferred model if available, otherwise returns first available model.
+	"""
+	available = _get_available_models()
+	
+	if not available:
+		# Fallback to common model names if list_models fails
+		return preferred
+	
+	# Check if preferred model is available (with or without models/ prefix)
+	preferred_variants = [preferred, f"models/{preferred}"]
+	if preferred.startswith("models/"):
+		preferred_variants = [preferred, preferred[7:]]
+	
+	for variant in preferred_variants:
+		if variant in available:
+			return variant
+	
+	# Return first available model
+	return available[0] if available else preferred
+
+
 def generate_insight(analysis_result: Dict[str, Any], context: Dict[str, Any] | None = None) -> Dict[str, Any]:
 	"""
 	Generate AI insight from analysis result using Gemini.
@@ -34,8 +91,10 @@ def generate_insight(analysis_result: Dict[str, Any], context: Dict[str, Any] | 
 	
 	genai.configure(api_key=settings.gemini_api_key)
 	
-	# Try to create model, with fallback if model name is invalid
-	model_name = settings.gemini_model
+	# Find a working model by checking available models
+	model_name = _find_working_model(settings.gemini_model)
+	
+	# Try to create model
 	try:
 		model = genai.GenerativeModel(
 			model_name=model_name,
@@ -47,29 +106,42 @@ def generate_insight(analysis_result: Dict[str, Any], context: Dict[str, Any] | 
 			},
 		)
 	except Exception as e:
-		# If model fails, try fallback models
-		fallback_models = ["gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro", "models/gemini-pro"]
+		# If still fails, try fallback models
+		fallback_models = ["gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro"]
 		model = None
 		last_error = str(e)
 		
 		for fallback in fallback_models:
 			try:
-				model = genai.GenerativeModel(
-					model_name=fallback,
-					safety_settings={
-						HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-						HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-						HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-						HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-					},
-				)
-				model_name = fallback  # Update to successful model
-				break
+				# Try both with and without models/ prefix
+				for variant in [fallback, f"models/{fallback}"]:
+					try:
+						model = genai.GenerativeModel(
+							model_name=variant,
+							safety_settings={
+								HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+								HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+								HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+								HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+							},
+						)
+						model_name = variant
+						break
+					except Exception:
+						continue
+				if model:
+					break
 			except Exception:
 				continue
 		
 		if model is None:
-			raise RuntimeError(f"Failed to initialize any Gemini model. Original error: {last_error}. Tried: {model_name}, {', '.join(fallback_models)}")
+			available_models = _get_available_models()
+			available_str = ", ".join(available_models[:5]) if available_models else "none found"
+			raise RuntimeError(
+				f"Failed to initialize Gemini model. Original error: {last_error}. "
+				f"Tried: {settings.gemini_model}, {model_name}, and fallbacks. "
+				f"Available models: {available_str}"
+			)
 	
 	# Build prompt
 	prompt = _build_prompt(analysis_result, context)
