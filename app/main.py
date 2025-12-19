@@ -9,7 +9,7 @@ from app.core.config import settings
 # ✅ IMPORTANT:
 # Make sure all SQLAlchemy models are imported so they register into Base.metadata
 # Your models live in app/db/modules.py
-from app.db import modules  # noqa: F401
+from app.db import moduels  # noqa: F401
 
 
 def create_app() -> FastAPI:
