@@ -34,15 +34,42 @@ def generate_insight(analysis_result: Dict[str, Any], context: Dict[str, Any] | 
 	
 	genai.configure(api_key=settings.gemini_api_key)
 	
-	model = genai.GenerativeModel(
-		model_name=settings.gemini_model,
-		safety_settings={
-			HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-			HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-			HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-			HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-		},
-	)
+	# Try to create model, with fallback if model name is invalid
+	model_name = settings.gemini_model
+	try:
+		model = genai.GenerativeModel(
+			model_name=model_name,
+			safety_settings={
+				HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+				HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+				HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+				HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+			},
+		)
+	except Exception as e:
+		# If model fails, try fallback models
+		fallback_models = ["gemini-pro", "gemini-1.5-pro", "models/gemini-pro"]
+		model = None
+		last_error = str(e)
+		
+		for fallback in fallback_models:
+			try:
+				model = genai.GenerativeModel(
+					model_name=fallback,
+					safety_settings={
+						HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+						HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+						HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+						HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+					},
+				)
+				model_name = fallback  # Update to successful model
+				break
+			except Exception:
+				continue
+		
+		if model is None:
+			raise RuntimeError(f"Failed to initialize any Gemini model. Original error: {last_error}. Tried: {model_name}, {', '.join(fallback_models)}")
 	
 	# Build prompt
 	prompt = _build_prompt(analysis_result, context)
