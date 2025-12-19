@@ -18,6 +18,7 @@ class User(Base):
 	datasets = relationship("Dataset", back_populates="owner", cascade="all, delete-orphan")
 	analysis_runs = relationship("AnalysisRun", back_populates="owner", cascade="all, delete-orphan")
 	places = relationship("Place", back_populates="owner", cascade="all, delete-orphan")
+	ai_usage = relationship("AIUsage", back_populates="owner", cascade="all, delete-orphan")
 
 
 class Dataset(Base):
@@ -65,5 +66,16 @@ class Place(Base):
 	created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 	owner = relationship("User", back_populates="places")
+
+
+class AIUsage(Base):
+	__tablename__ = "ai_usage"
+
+	id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+	user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+	action: Mapped[str] = mapped_column(String(50), nullable=False, default="insight")
+	created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+	owner = relationship("User", back_populates="ai_usage")
 
 

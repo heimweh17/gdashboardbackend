@@ -22,6 +22,9 @@ class Settings(BaseSettings):
 	database_url: str = Field(default=os.getenv("DATABASE_URL", "sqlite:///./geo.db"))
 	upload_dir: str = Field(default=os.getenv("UPLOAD_DIR", "storage/uploads"))
 	cors_origins: str = Field(default=os.getenv("CORS_ORIGINS", "http://localhost:5173,https://thegeodashboard.vercel.app"))
+	gemini_api_key: str | None = Field(default=os.getenv("GEMINI_API_KEY"))
+	gemini_model: str = Field(default=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"))
+	ai_max_output_tokens: int = Field(default=int(os.getenv("AI_MAX_OUTPUT_TOKENS", "600")))
 
 	@property
 	def access_token_expires(self) -> timedelta:
