@@ -1,8 +1,10 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, datasets, analysis
+from app.routers import auth, datasets, analysis, places
 from app.db.database import Base, engine
+from app.core.config import settings
 
 
 def create_app() -> FastAPI:
@@ -15,14 +17,10 @@ def create_app() -> FastAPI:
 		description="Backend API for a geospatial analytics platform."
 	)
 
-	# CORS (open for dev)
+	# CORS: use configured origins (production-ready)
 	app.add_middleware(
 		CORSMiddleware,
-		allow_origins=[
-        "https://thegeodashboard.vercel.app",
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
+		allow_origins=settings.cors_origins_list,
 		allow_credentials=True,
 		allow_methods=["*"],
 		allow_headers=["*"],
@@ -32,12 +30,15 @@ def create_app() -> FastAPI:
 	app.include_router(auth.router, prefix="/auth", tags=["auth"])
 	app.include_router(datasets.router, prefix="/datasets", tags=["datasets"])
 	app.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
+	app.include_router(places.router, prefix="/places", tags=["places"])
 
 	return app
 
 
-# Create database tables at startup (development convenience)
-Base.metadata.create_all(bind=engine)
+# Create database tables at startup (only for development/SQLite)
+# In production, use Alembic migrations instead
+if os.getenv("ENVIRONMENT") != "production" and settings.sqlalchemy_database_url.startswith("sqlite"):
+	Base.metadata.create_all(bind=engine)
 
 app = create_app()
 
