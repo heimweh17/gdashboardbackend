@@ -1,0 +1,27 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Production
+dist
+dist-ssr
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# Editor
+.vscode/*
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
