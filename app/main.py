@@ -40,8 +40,16 @@ def create_app() -> FastAPI:
 
 # Create database tables at startup if AUTO_CREATE_TABLES is set
 # This is useful for bootstrapping in Railway or development
-# In production with migrations, set AUTO_CREATE_TABLES=false or unset
-if os.getenv("AUTO_CREATE_TABLES", "").lower() == "true":
+# Railway: Set AUTO_CREATE_TABLES=true in Railway environment variables for first deploy
+# After tables are created, you can set it to false or remove it
+# Defaults to true if on Railway (detected by RAILWAY_ENVIRONMENT variable)
+railway_env = os.getenv("RAILWAY_ENVIRONMENT")
+auto_create = os.getenv("AUTO_CREATE_TABLES", "").lower()
+# Default to true on Railway if not explicitly set
+if railway_env and auto_create == "":
+	auto_create = "true"
+
+if auto_create == "true":
 	Base.metadata.create_all(bind=engine)
 
 app = create_app()
