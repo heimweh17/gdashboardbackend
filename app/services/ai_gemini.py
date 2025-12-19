@@ -3,6 +3,7 @@ Gemini AI service for generating insights from analysis results.
 """
 import json
 import os
+import re
 from typing import Any, Dict
 
 try:
@@ -147,38 +148,114 @@ def generate_insight(analysis_result: Dict[str, Any], context: Dict[str, Any] | 
 	prompt = _build_prompt(analysis_result, context)
 	
 	# Generate response
-	response = model.generate_content(
-		prompt,
-		generation_config={
-			"temperature": 0.7,
-			"max_output_tokens": settings.ai_max_output_tokens,
-		},
-	)
+	try:
+		response = model.generate_content(
+			prompt,
+			generation_config={
+				"temperature": 0.7,
+				"max_output_tokens": settings.ai_max_output_tokens,
+			},
+		)
+	except Exception as e:
+		raise RuntimeError(f"Failed to generate content from Gemini: {str(e)}")
+	
+	# Get full text response
+	if not hasattr(response, 'text') or not response.text:
+		raise RuntimeError("Empty response from Gemini model")
 	
 	# Parse JSON response
 	text = response.text.strip()
 	
 	# Try to extract JSON if wrapped in markdown code blocks
-	if "```json" in text:
-		start = text.find("```json") + 7
-		end = text.find("```", start)
-		if end > start:
-			text = text[start:end].strip()
-	elif "```" in text:
-		start = text.find("```") + 3
-		end = text.find("```", start)
-		if end > start:
-			text = text[start:end].strip()
+	# Handle multiple formats: ```json, ```, or plain JSON
+	json_text = text
 	
+	# Remove markdown code blocks
+	if "```json" in text.lower():
+		# Find all occurrences and get the largest JSON block
+		parts = text.split("```json")
+		if len(parts) > 1:
+			# Take the part after ```json
+			candidate = parts[1].split("```")[0].strip()
+			if candidate.startswith("{") or candidate.startswith("["):
+				json_text = candidate
+	elif "```" in text:
+		# Try to find JSON between code blocks
+		parts = text.split("```")
+		for i in range(1, len(parts), 2):  # Every odd index is inside code blocks
+			candidate = parts[i].strip()
+			# Remove language identifier if present
+			if candidate.startswith("json"):
+				candidate = candidate[4:].strip()
+			if candidate.startswith("{") or candidate.startswith("["):
+				json_text = candidate
+				break
+	
+	# Try to find JSON object in the text if it's not already extracted
+	if not (json_text.startswith("{") or json_text.startswith("[")):
+		# Look for JSON object boundaries
+		start_idx = json_text.find("{")
+		if start_idx >= 0:
+			# Find matching closing brace
+			brace_count = 0
+			end_idx = start_idx
+			for i in range(start_idx, len(json_text)):
+				if json_text[i] == "{":
+					brace_count += 1
+				elif json_text[i] == "}":
+					brace_count -= 1
+					if brace_count == 0:
+						end_idx = i + 1
+						break
+			if end_idx > start_idx:
+				json_text = json_text[start_idx:end_idx]
+	
+	# Parse JSON
 	try:
-		result = json.loads(text)
-	except json.JSONDecodeError:
-		# Fallback: return as plain text with basic structure
-		result = {
-			"text": text,
-			"highlights": [text[:100] + "..." if len(text) > 100 else text],
-			"method": "Gemini analysis based on provided data",
-		}
+		result = json.loads(json_text)
+	except json.JSONDecodeError as e:
+		# If JSON parsing fails, try to extract meaningful content
+		# Look for text field in the raw response
+		if '"text"' in text or "'text'" in text:
+			# Try to extract text field using regex-like approach
+			# Match text field with proper JSON string handling (including escaped quotes)
+			text_match = re.search(r'["\']text["\']\s*:\s*["\']((?:[^"\\]|\\.)*)["\']', text)
+			# Also try without quotes (in case it's a multi-line string)
+			if not text_match:
+				text_match = re.search(r'["\']text["\']\s*:\s*["\']([^"\']*(?:\n[^"\']*)*)["\']', text, re.DOTALL)
+			highlights_match = re.findall(r'["\']highlights["\']\s*:\s*\[(.*?)\]', text, re.DOTALL)
+			
+			if text_match:
+				result = {
+					"text": text_match.group(1),
+					"highlights": [],
+					"method": "Gemini analysis based on provided data",
+				}
+				# Try to extract highlights
+				if highlights_match:
+					# Simple extraction of highlight strings
+					highlight_strs = re.findall(r'["\']([^"\']+)["\']', highlights_match[0])
+					result["highlights"] = highlight_strs[:5]  # Limit to 5
+			else:
+				# Fallback: return as plain text with basic structure
+				# Use first 500 chars as text
+				clean_text = text.replace("```json", "").replace("```", "").strip()
+				if clean_text.startswith("{"):
+					clean_text = clean_text[1:]
+				if clean_text.endswith("}"):
+					clean_text = clean_text[:-1]
+				result = {
+					"text": clean_text[:500] + ("..." if len(clean_text) > 500 else ""),
+					"highlights": [clean_text[:100] + "..." if len(clean_text) > 100 else clean_text],
+					"method": "Gemini analysis based on provided data",
+				}
+		else:
+			# Complete fallback
+			result = {
+				"text": text[:500] + ("..." if len(text) > 500 else ""),
+				"highlights": [text[:100] + "..." if len(text) > 100 else text],
+				"method": "Gemini analysis based on provided data",
+			}
 	
 	# Ensure required fields
 	if "text" not in result:
@@ -251,12 +328,14 @@ def _build_prompt(analysis_result: Dict[str, Any], context: Dict[str, Any] | Non
 	
 	prompt_parts.extend([
 		"",
-		"OUTPUT FORMAT: Return a JSON object with exactly these fields:",
+		"OUTPUT FORMAT: Return ONLY a valid JSON object (no markdown, no code blocks, no explanations). The JSON must have exactly these fields:",
 		"{",
 		'  "text": "A concise scientific-style narrative paragraph (3-5 sentences) summarizing the spatial patterns, distribution characteristics, and notable findings. Use hedging language and reference specific numbers from the data.",',
 		'  "highlights": ["Bullet point 1 with key finding and %", "Bullet point 2", "Bullet point 3"],',
 		'  "method": "Brief note on methodology/assumptions (e.g., DBSCAN clustering, category field used, spatial extent)"',
 		"}",
+		"",
+		"IMPORTANT: Return ONLY the JSON object, nothing else. No markdown code blocks, no explanations, just the raw JSON.",
 		"",
 		"Generate the insight now:",
 	])
