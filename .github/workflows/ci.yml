@@ -1,0 +1,44 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
+
+      # 1) Lint（快、够用）
+      - name: Ruff check
+        run: ruff check .
+
+      # 2) Import smoke test（抓 ImportError / 缺包 / module 路径问题）
+      - name: Import smoke test
+        env:
+          DATABASE_URL: "sqlite:///./ci.db"
+          SECRET_KEY: "ci-secret"
+          ENVIRONMENT: "test"
+        run: |
+          python -c "import app.main; print('import ok')"
+
+      # 3) Optional: Docker build（如果你 repo 有 Dockerfile）
+      - name: Docker build
+        if: ${{ hashFiles('Dockerfile') != '' }}
+        run: docker build -t gdashboardbackend:ci .

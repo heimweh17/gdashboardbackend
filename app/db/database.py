@@ -1,38 +1,39 @@
 from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
+db_url = settings.sqlalchemy_database_url
 
-# SQLite specific: check_same_thread=False required for SQLite with multiple threads
-# Postgres: use connection pooling
-connect_args = {}
-if settings.sqlalchemy_database_url.startswith("sqlite"):
-	connect_args = {"check_same_thread": False}
-elif settings.sqlalchemy_database_url.startswith("postgresql"):
-	# Postgres connection pooling settings
-	connect_args = {}
+engine_kwargs = {
+    "pool_pre_ping": True,
+}
 
-engine = create_engine(
-	settings.sqlalchemy_database_url,
-	connect_args=connect_args,
-	pool_pre_ping=True,
-	# Postgres: enable connection pooling
-	pool_size=5 if not settings.sqlalchemy_database_url.startswith("sqlite") else None,
-	max_overflow=10 if not settings.sqlalchemy_database_url.startswith("sqlite") else None,
+if db_url.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+    engine_kwargs["poolclass"] = NullPool
+else:
+    engine_kwargs["connect_args"] = {}
+    engine_kwargs["pool_size"] = 5
+    engine_kwargs["max_overflow"] = 10
+
+engine = create_engine(db_url, **engine_kwargs)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    expire_on_commit=False,
 )
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 Base = declarative_base()
 
 
 def get_db() -> Generator[Session, None, None]:
-	db = SessionLocal()
-	try:
-		yield db
-	finally:
-		db.close()
-
-
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

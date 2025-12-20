@@ -2,12 +2,12 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, datasets, analysis, places, ai
+from app.routers import auth, datasets, analysis, places
 from app.db.database import Base, engine
 from app.core.config import settings
 # Import models to ensure they're registered with Base.metadata
 from app.db import models  # noqa: F401
-
+from app.routers import ai_proxy
 
 def create_app() -> FastAPI:
 	"""
@@ -33,8 +33,8 @@ def create_app() -> FastAPI:
 	app.include_router(datasets.router, prefix="/datasets", tags=["datasets"])
 	app.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
 	app.include_router(places.router, prefix="/places", tags=["places"])
-	app.include_router(ai.router, prefix="/ai", tags=["ai"])
-
+	#app.include_router(ai.router, prefix="/ai", tags=["ai"])
+	app.include_router(ai_proxy.router, prefix="/ai", tags=["ai"])
 	return app
 
 

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 	gemini_api_key: str | None = Field(default=os.getenv("GEMINI_API_KEY"))
 	gemini_model: str = Field(default=os.getenv("GEMINI_MODEL", "gemini-1.5-pro"))
 	ai_max_output_tokens: int = Field(default=int(os.getenv("AI_MAX_OUTPUT_TOKENS", "600")))
-
+	ai_service_url: str | None = Field(default=os.getenv("AI_SERVICE_URL"))
 	@property
 	def access_token_expires(self) -> timedelta:
 		return timedelta(minutes=self.access_token_expire_minutes)
