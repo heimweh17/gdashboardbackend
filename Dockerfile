@@ -14,4 +14,4 @@ COPY app ./app
 ENV PYTHONUNBUFFERED=1
 
 # Start FastAPI app
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000"]
+CMD sh -c "uvicorn ${APP_MODULE} --host 0.0.0.0 --port 10000"
