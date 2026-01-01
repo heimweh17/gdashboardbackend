@@ -1,6 +1,9 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.request_id import RequestIdMiddleware
+
+
 
 from app.routers import auth, datasets, analysis, places
 from app.db.database import Base, engine
@@ -8,7 +11,7 @@ from app.core.config import settings
 # Import models to ensure they're registered with Base.metadata
 from app.db import models  # noqa: F401
 from app.routers import ai_proxy
-
+app.add_middleware(RequestIdMiddleware)
 def create_app() -> FastAPI:
 	"""
 	Create and configure the FastAPI application instance.

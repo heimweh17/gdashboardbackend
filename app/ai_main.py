@@ -7,6 +7,9 @@ from app.db.database import get_db
 from app.routers.auth import get_current_user
 from app.db.models import User
 from app.routers.ai import router as ai_router
+from app.core.request_id import RequestIdMiddleware
+
+app.add_middleware(RequestIdMiddleware)
 
 # ------------------------
 # AI Microservice App
