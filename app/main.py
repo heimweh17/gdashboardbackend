@@ -11,7 +11,7 @@ from app.core.config import settings
 # Import models to ensure they're registered with Base.metadata
 from app.db import models  # noqa: F401
 from app.routers import ai_proxy
-app.add_middleware(RequestIdMiddleware)
+
 def create_app() -> FastAPI:
 	"""
 	Create and configure the FastAPI application instance.
@@ -21,7 +21,7 @@ def create_app() -> FastAPI:
 		version="0.1.0",
 		description="Backend API for a geospatial analytics platform."
 	)
-
+	app.add_middleware(RequestIdMiddleware)
 	# CORS: use configured origins (production-ready)
 	app.add_middleware(
 		CORSMiddleware,
