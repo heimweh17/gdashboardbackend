@@ -13,5 +13,5 @@ COPY app ./app
 # Ensure logs are flushed
 ENV PYTHONUNBUFFERED=1
 
-# Start FastAPI app
-CMD sh -c "uvicorn ${APP_MODULE} --host 0.0.0.0 --port 10000"
+# Start the API with Render's assigned port (or 10000 locally).
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
