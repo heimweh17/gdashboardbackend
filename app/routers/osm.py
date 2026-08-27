@@ -10,7 +10,8 @@ log = logging.getLogger("osm_proxy")
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OVERPASS_ENDPOINTS = (
-    "https://overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
 REQUEST_HEADERS = {
@@ -97,7 +98,7 @@ def fetch_amenities(payload: AmenitiesRequest) -> dict[str, Any]:
                 endpoint,
                 data={"data": overpass_query},
                 headers=REQUEST_HEADERS,
-                timeout=35,
+                timeout=15,
             )
             response.raise_for_status()
             result = response.json()
