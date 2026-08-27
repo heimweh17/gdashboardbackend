@@ -42,16 +42,9 @@ def create_app() -> FastAPI:
 	return app
 
 
-# Create database tables at startup if AUTO_CREATE_TABLES is set
-# This is useful for bootstrapping in Railway or development
-# Railway: Set AUTO_CREATE_TABLES=true in Railway environment variables for first deploy
-# After tables are created, you can set it to false or remove it
-# Defaults to true if on Railway (detected by RAILWAY_ENVIRONMENT variable)
-railway_env = os.getenv("RAILWAY_ENVIRONMENT")
-auto_create = os.getenv("AUTO_CREATE_TABLES", "").lower()
-# Default to true on Railway if not explicitly set
-if railway_env and auto_create == "":
-	auto_create = "true"
+# Initialize a fresh deployment database unless explicitly disabled.
+# This keeps Render and other hosts from starting with an empty SQLite database.
+auto_create = os.getenv("AUTO_CREATE_TABLES", "true").lower()
 
 if auto_create == "true":
 	Base.metadata.create_all(bind=engine)
