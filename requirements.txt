@@ -15,4 +15,5 @@ argon2-cffi
 passlib
 psycopg2-binary==2.9.9
 requests
+certifi>=2026.10.19
 google-generativeai>=0.3.0

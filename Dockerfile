@@ -1,5 +1,11 @@
 FROM python:3.11-slim
 
+# Refresh the system certificate store for outbound HTTPS.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 
